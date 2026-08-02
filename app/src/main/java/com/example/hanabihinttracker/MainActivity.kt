@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HanabiApp(vm: GameViewModel = viewModel()) {
     val state by vm.state.collectAsState()
@@ -113,7 +114,8 @@ private fun HintDialog(state: GameState, onDismiss: () -> Unit, onConfirm: (Hint
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { FilterChip(kind == HintKind.COLOR, { kind = HintKind.COLOR }, label = { Text("Color") }); FilterChip(kind == HintKind.NUMBER, { kind = HintKind.NUMBER }, label = { Text("Number") }) }
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(if (kind == HintKind.COLOR) state.ruleset.hintableColors.toList() else state.ruleset.numbers.toList()) { item ->
+                val options: List<Any> = if (kind == HintKind.COLOR) state.ruleset.hintableColors.toList() else state.ruleset.numbers.toList()
+                items(items = options) { item ->
                     val itemValue = if (item is Color) item.name else item.toString()
                     FilterChip(value == itemValue, { value = itemValue }, label = { Text(if (item is Color) item.label else "#$itemValue") })
                 }
