@@ -61,7 +61,7 @@ android {
                 maybeCreate<com.android.build.api.dsl.ManagedVirtualDevice>("pixel2Api30").apply {
                     device = "Pixel 2"
                     apiLevel = 30
-                    systemImageSource = "aosp-atd"
+                    systemImageSource = "aosp"
                 }
             }
         }
