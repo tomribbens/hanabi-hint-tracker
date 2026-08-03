@@ -55,6 +55,14 @@ class HintEngineTest {
     }
 
     @Test
+    fun gameCanStartWithSixCards() {
+        val state = GameState.new(Ruleset.forPreset(Preset.STANDARD), 6)
+
+        assertEquals(6, state.cards.size)
+        assertTrue(state.cards.all { it.knowledge.possibleColors == state.ruleset.colors })
+    }
+
+    @Test
     fun undoRebuildsKnowledge() {
         val state = standardGame()
         val changed = HintEngine.applyHint(state, Hint.ColorHint(Color.BLUE), setOf(1L)).acceptedState()

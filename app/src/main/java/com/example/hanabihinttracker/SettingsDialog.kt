@@ -72,6 +72,8 @@ internal fun SettingsDialog(
                     FilterChip(size == 4, { size = 4 }, label = { Text("4") })
                     Spacer(Modifier.width(6.dp))
                     FilterChip(size == 5, { size = 5 }, label = { Text("5") })
+                    Spacer(Modifier.width(6.dp))
+                    FilterChip(size == 6, { size = 6 }, label = { Text("6") })
                 }
                 Text("Replacement enters from")
                 Row {

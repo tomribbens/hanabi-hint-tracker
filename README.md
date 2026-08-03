@@ -1,6 +1,6 @@
 # Hanabi Hint Tracker
 
-An offline Android companion for tracking hidden-card information in Hanabi. It supports 4- or 5-card hands, color and number hints, card reordering, play-and-replace, persisted state, and configurable replacement direction.
+An offline Android companion for tracking hidden-card information in Hanabi. It supports 4-, 5-, or 6-card hands, color and number hints, card reordering, play-and-replace, persisted state, and configurable replacement direction.
 
 ## Presets
 

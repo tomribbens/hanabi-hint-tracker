@@ -22,7 +22,7 @@ class DraggableHandTest {
             com.example.hanabihinttracker.domain.Ruleset.forPreset(
                 com.example.hanabihinttracker.domain.Preset.STANDARD
             ),
-            handSize = 5
+            handSize = 6
         ).cards
 
         composeRule.setContent {

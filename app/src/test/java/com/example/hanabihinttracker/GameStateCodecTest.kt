@@ -17,7 +17,7 @@ import org.junit.Test
 class GameStateCodecTest {
     @Test
     fun versionedStateRoundTrips() {
-        val initial = GameState.new(Ruleset.forPreset(Preset.BLACK_POWDER_RAINBOW_MULTI), 4)
+        val initial = GameState.new(Ruleset.forPreset(Preset.BLACK_POWDER_RAINBOW_MULTI), 6)
         val hinted = (HintEngine.applyHint(initial, Hint.NumberHint(3), setOf(1L)) as HintApplicationResult.Accepted).state
         val state = HanabiAppState(
             game = hinted,
