@@ -1,7 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
         android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
         android:label="Hanabi Hint Tracker"
+        android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.HanabiHintTracker">
         <activity android:name=".MainActivity" android:screenOrientation="landscape" android:exported="true">

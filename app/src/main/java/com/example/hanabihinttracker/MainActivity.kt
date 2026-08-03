@@ -76,24 +76,7 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
     fun moveDraggedCard(deltaX: Float) {
         if (draggingId == null || reorderStepPx <= 0f) return
         dragOffsetX += deltaX
-        while (dragOffsetX > reorderStepPx / 2 && dragCurrentIndex < cardsToShow.lastIndex) {
-            val next = displayOrder.toMutableList()
-            val index = next.indexOfFirst { it.id == draggingId }
-            val moved = next.removeAt(index)
-            next.add(index + 1, moved)
-            displayOrder = next
-            dragCurrentIndex++
-            dragOffsetX -= reorderStepPx
-        }
-        while (dragOffsetX < -reorderStepPx / 2 && dragCurrentIndex > 0) {
-            val next = displayOrder.toMutableList()
-            val index = next.indexOfFirst { it.id == draggingId }
-            val moved = next.removeAt(index)
-            next.add(index - 1, moved)
-            displayOrder = next
-            dragCurrentIndex--
-            dragOffsetX += reorderStepPx
-        }
+        dragCurrentIndex = (dragStartIndex + (dragOffsetX / reorderStepPx).roundToInt()).coerceIn(0, cardsToShow.lastIndex)
     }
 
     fun endCardDrag(play: Boolean = false) {
@@ -108,6 +91,14 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
         displayOrder = if (play) state.cards else displayOrder
     }
 
+    fun cancelCardDrag() {
+        draggingId = null
+        dragOffsetX = 0f
+        dragStartIndex = -1
+        dragCurrentIndex = -1
+        displayOrder = state.cards
+    }
+
     HanabiTheme(darkBackground = state.darkBackground) {
         Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
             Column(
@@ -120,28 +111,56 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                     Spacer(Modifier.weight(1f))
                     AssistChip(onClick = { hintDialog = true }, label = { Text("Give hint") }, leadingIcon = { Icon(Icons.Default.Add, null) })
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    cardsToShow.forEachIndexed { index, card ->
+                val draggedCard = draggingId?.let { id -> cardsToShow.firstOrNull { it.id == id } }
+                val visibleCards = if (draggedCard == null) cardsToShow else cardsToShow.filterNot { it.id == draggedCard.id }
+                val rowSlots: List<TrackedCard?> = if (draggedCard == null) cardsToShow else visibleCards.toMutableList().apply {
+                    add(dragCurrentIndex.coerceIn(0, size), null)
+                }
+                Box(Modifier.fillMaxWidth().height(270.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    rowSlots.forEachIndexed { index, card ->
                         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                            KnowledgeCard(
-                                card = card,
-                                state = state,
-                                selected = selectedCard == card.id,
-                                onSelect = { selectedCard = card.id },
-                                onPlay = { if (draggingId == null) vm.play(card.id) else endCardDrag(play = true); selectedCard = null },
-                                dragging = draggingId == card.id,
-                                dragOffsetX = if (draggingId == card.id) dragOffsetX else 0f,
-                                onCardWidthChanged = { cardWidthPx = it },
-                                onDragStart = { beginCardDrag(card) },
-                                onDragDelta = ::moveDraggedCard,
-                                onDragEnd = { endCardDrag() },
-                                onDragCancel = { displayOrder = state.cards; draggingId = null; dragOffsetX = 0f }
-                            )
-                            ReorderMarker(
-                                moveLeft = { vm.reorder(index, (index - 1).coerceAtLeast(0)) },
-                                moveRight = { vm.reorder(index, (index + 1).coerceAtMost(state.cards.lastIndex)) }
-                            )
+                            if (card == null) {
+                                DragPlaceholder()
+                            } else {
+                                KnowledgeCard(
+                                    card = card,
+                                    state = state,
+                                    selected = selectedCard == card.id,
+                                    onSelect = { selectedCard = card.id },
+                                    onPlay = { if (draggingId == null) vm.play(card.id) else endCardDrag(play = true); selectedCard = null },
+                                    dragging = false,
+                                    dragOffsetX = 0f,
+                                    onCardWidthChanged = { cardWidthPx = it },
+                                    onDragStart = { beginCardDrag(card) },
+                                    onDragDelta = ::moveDraggedCard,
+                                    onDragEnd = { endCardDrag() },
+                                    onDragCancel = ::cancelCardDrag
+                                )
+                                ReorderMarker(
+                                    moveLeft = { vm.reorder(cardsToShow.indexOfFirst { it.id == card.id }, (cardsToShow.indexOfFirst { it.id == card.id } - 1).coerceAtLeast(0)) },
+                                    moveRight = { vm.reorder(cardsToShow.indexOfFirst { it.id == card.id }, (cardsToShow.indexOfFirst { it.id == card.id } + 1).coerceAtMost(state.cards.lastIndex)) }
+                                )
+                            }
                         }
+                    }
+                    }
+                    if (draggedCard != null) {
+                        KnowledgeCard(
+                            card = draggedCard,
+                            state = state,
+                            selected = selectedCard == draggedCard.id,
+                            onSelect = { selectedCard = draggedCard.id },
+                            onPlay = { endCardDrag(play = true); selectedCard = null },
+                            dragging = true,
+                            dragOffsetX = 0f,
+                            onCardWidthChanged = { cardWidthPx = it },
+                            onDragStart = { beginCardDrag(draggedCard) },
+                            onDragDelta = ::moveDraggedCard,
+                            onDragEnd = { endCardDrag() },
+                            onDragCancel = ::cancelCardDrag,
+                            modifier = Modifier.width(with(density) { cardWidthPx.coerceAtLeast(1).toDp() }).offset { androidx.compose.ui.unit.IntOffset((dragStartIndex * reorderStepPx + dragOffsetX).roundToInt(), 0) }
+                        )
                     }
                 }
                 if (selectedCard != null) {
@@ -174,7 +193,8 @@ private fun KnowledgeCard(
     onDragStart: () -> Unit,
     onDragDelta: (Float) -> Unit,
     onDragEnd: () -> Unit,
-    onDragCancel: () -> Unit
+    onDragCancel: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     var dragY by remember { mutableFloatStateOf(0f) }
     val currentOnDragStart by rememberUpdatedState(onDragStart)
@@ -183,7 +203,7 @@ private fun KnowledgeCard(
     val currentOnDragCancel by rememberUpdatedState(onDragCancel)
     val currentOnPlay by rememberUpdatedState(onPlay)
     Card(
-        Modifier.fillMaxWidth().height(224.dp).onSizeChanged { onCardWidthChanged(it.width) }
+        modifier.fillMaxWidth().height(224.dp).onSizeChanged { onCardWidthChanged(it.width) }
             .graphicsLayer { translationX = if (dragging) dragOffsetX else 0f; translationY = if (dragging) -12.dp.toPx() else 0f }
             .zIndex(if (dragging) 1f else 0f)
             .pointerInput(card.id) {
@@ -219,6 +239,19 @@ private fun KnowledgeCard(
                 card.knowledge.numberHints.forEach { NumberSquare(it, 20.dp) }
             }
             OutlinedButton(onClick = onPlay, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(0.dp)) { Text("Play") }
+        }
+    }
+}
+
+@Composable
+private fun DragPlaceholder() {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier.fillMaxWidth().height(224.dp).clip(RoundedCornerShape(12.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
+        )
+        Row(Modifier.height(45.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            repeat(2) { Box(Modifier.width(2.dp).height(22.dp).background(MaterialTheme.colorScheme.outline)) }
         }
     }
 }
