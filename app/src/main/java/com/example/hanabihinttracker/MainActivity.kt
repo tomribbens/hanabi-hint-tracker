@@ -5,10 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.FlowRow
@@ -74,6 +72,8 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
     val cardsToShow = if (displayOrder.isEmpty()) state.cards else displayOrder
     val density = LocalDensity.current
     val spacingPx = with(density) { 8.dp.toPx() }
+    val dragHandleTopPx = with(density) { 224.dp.toPx() }
+    val dragHandleHalfWidthPx = with(density) { 24.dp.toPx() }
     val reorderStepPx = if (cardsToShow.isNotEmpty() && handWidthPx > 0) {
         (handWidthPx - spacingPx * (cardsToShow.size - 1)) / cardsToShow.size + spacingPx
     } else cardWidthPx + spacingPx
@@ -171,17 +171,18 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                 }
                 Box(
                     Modifier.fillMaxWidth().height(270.dp).onSizeChanged { handWidthPx = it.width }
-                        .pointerInput(reorderStepPx, cardsToShow) {
+                        .pointerInput(reorderStepPx, cardsToShow, dragHandleTopPx, dragHandleHalfWidthPx) {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                                val longPress = awaitLongPressOrCancellation(down.id)
-                                if (longPress == null) {
-                                    if (draggingId != null) cancelCardDrag()
-                                } else if (reorderStepPx > 0f && cardsToShow.isNotEmpty()) {
-                                    val index = (longPress.position.x / reorderStepPx).toInt()
-                                        .coerceIn(0, cardsToShow.lastIndex)
-                                    beginCardDrag(cardsToShow[index])
-                                    val completed = drag(longPress.id) { change ->
+                                val slotIndex = if (reorderStepPx > 0f) (down.position.x / reorderStepPx).toInt() else -1
+                                val slotWidthPx = reorderStepPx - spacingPx
+                                val positionInSlotPx = down.position.x - slotIndex * reorderStepPx
+                                val onDragHandle = down.position.y >= dragHandleTopPx &&
+                                    kotlin.math.abs(positionInSlotPx - slotWidthPx / 2f) <= dragHandleHalfWidthPx
+                                if (onDragHandle && slotIndex in cardsToShow.indices) {
+                                    beginCardDrag(cardsToShow[slotIndex])
+                                    down.consume()
+                                    val completed = drag(down.id) { change ->
                                         val amount = change.positionChange()
                                         if (amount.x != 0f || amount.y != 0f) {
                                             change.consume()
@@ -212,24 +213,14 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                                     dragging = false,
                                     onCardWidthChanged = { cardWidthPx = it }
                                 )
-                                ReorderMarker(
-                                    moveLeft = { vm.reorder(cardsToShow.indexOfFirst { it.id == card.id }, (cardsToShow.indexOfFirst { it.id == card.id } - 1).coerceAtLeast(0)) },
-                                    moveRight = { vm.reorder(cardsToShow.indexOfFirst { it.id == card.id }, (cardsToShow.indexOfFirst { it.id == card.id } + 1).coerceAtMost(state.cards.lastIndex)) }
-                                )
+                                ReorderMarker()
                             }
                         }
                     }
                     }
                     if (draggedCard != null) {
-                        KnowledgeCard(
-                            card = draggedCard,
-                            state = state,
-                            selected = if (selectedHint != null) draggedCard.id in hintMatches else selectedCard == draggedCard.id,
-                            onSelect = { selectedCard = draggedCard.id },
-                            onPlay = { endCardDrag(play = true); selectedCard = null },
-                            dragging = true,
-                            onCardWidthChanged = { cardWidthPx = it },
-                            modifier = Modifier
+                        Column(
+                            Modifier
                                 .width(with(density) { cardWidthPx.coerceAtLeast(1).toDp() })
                                 .offset {
                                     androidx.compose.ui.unit.IntOffset(
@@ -237,7 +228,20 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                                         dragOffsetY.roundToInt()
                                     )
                                 }
-                        )
+                                .zIndex(2f),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            KnowledgeCard(
+                                card = draggedCard,
+                                state = state,
+                                selected = if (selectedHint != null) draggedCard.id in hintMatches else selectedCard == draggedCard.id,
+                                onSelect = { selectedCard = draggedCard.id },
+                                onPlay = { endCardDrag(play = true); selectedCard = null },
+                                dragging = true,
+                                onCardWidthChanged = { cardWidthPx = it }
+                            )
+                            ReorderMarker(dragging = true)
+                        }
                     }
                 }
                 if (hintError != null) {
@@ -328,16 +332,10 @@ private fun DragPlaceholder() {
 }
 
 @Composable
-private fun ReorderMarker(moveLeft: () -> Unit, moveRight: () -> Unit) {
-    var dragX by remember { mutableFloatStateOf(0f) }
+private fun ReorderMarker(dragging: Boolean = false) {
     Box(
         Modifier.padding(top = 3.dp).width(30.dp).height(42.dp).clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant).pointerInput(Unit) {
-                detectDragGestures(onDrag = { change, amount -> change.consume(); dragX += amount.x }, onDragEnd = {
-                    if (kotlin.math.abs(dragX) > 35) if (dragX < 0) moveLeft() else moveRight()
-                    dragX = 0f
-                }, onDragCancel = { dragX = 0f })
-            },
+            .background(if (dragging) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
