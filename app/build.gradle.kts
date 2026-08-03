@@ -8,19 +8,41 @@ android {
     namespace = "com.example.hanabihinttracker"
     compileSdk = 35
 
+    val ciKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+    val ciStorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+    val ciKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+    val ciKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
+    val ciKeystoreFile = ciKeystorePath?.let(::java.io.File)?.takeIf { it.isFile }
+    val useCiSigning = ciKeystoreFile != null && !ciStorePassword.isNullOrBlank() && !ciKeyPassword.isNullOrBlank() && !ciKeyAlias.isNullOrBlank()
+
+    signingConfigs {
+        if (useCiSigning) {
+            create("ci") {
+                storeFile = ciKeystoreFile
+                storePassword = ciStorePassword
+                keyPassword = ciKeyPassword
+                keyAlias = ciKeyAlias
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.example.hanabihinttracker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
     }
 
     buildTypes {
+        debug {
+            if (useCiSigning) signingConfig = signingConfigs.getByName("ci")
+        }
         release {
             isMinifyEnabled = false
+            if (useCiSigning) signingConfig = signingConfigs.getByName("ci")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
