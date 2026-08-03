@@ -144,6 +144,7 @@ private fun ReorderMarker(moveLeft: () -> Unit, moveRight: () -> Unit) {
     ) { Icon(Icons.Default.DragHandle, "Drag to reorder", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ColorSquares(colors: Set<Color>) {
     FlowRow(maxItemsInEachRow = 5, horizontalArrangement = Arrangement.spacedBy(3.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -156,6 +157,7 @@ private fun ColorSquare(color: Color, size: androidx.compose.ui.unit.Dp) {
     Box(Modifier.size(size).clip(RoundedCornerShape(4.dp)).background(color.brush()).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp)))
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun NumberSquares(numbers: Set<Int>) {
     FlowRow(maxItemsInEachRow = 5, horizontalArrangement = Arrangement.spacedBy(3.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -233,4 +235,4 @@ private fun HanabiTheme(darkBackground: Boolean, content: @Composable () -> Unit
 
 private fun Color.uiColor() = UiColor(hex)
 private fun Color.textColor() = if (this == Color.WHITE || this == Color.YELLOW) UiColor.Black else UiColor.White
-private fun Color.brush(): Brush = if (this == Color.RAINBOW) Brush.linearGradient(listOf(UiColor.Red, UiColor.Yellow, UiColor.Green, UiColor.Cyan, UiColor.Blue, UiColor.Magenta)) else Brush.solidColor(uiColor())
+private fun Color.brush(): Brush = if (this == Color.RAINBOW) Brush.linearGradient(listOf(UiColor.Red, UiColor.Yellow, UiColor.Green, UiColor.Cyan, UiColor.Blue, UiColor.Magenta)) else Brush.linearGradient(listOf(uiColor(), uiColor()))
