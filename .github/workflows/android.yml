@@ -29,8 +29,10 @@ jobs:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         run: echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/hanabi-signing.jks"
+      - name: Enable Android emulator acceleration
+        run: sudo chmod 666 /dev/kvm
       - name: Build and test
-        run: gradle testDebugUnitTest assembleDebug --stacktrace
+        run: gradle testDebugUnitTest pixel2Api30DebugAndroidTest assembleDebug --stacktrace
         env:
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/hanabi-signing.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
