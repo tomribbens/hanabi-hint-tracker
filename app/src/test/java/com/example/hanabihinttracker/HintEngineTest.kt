@@ -46,4 +46,11 @@ class HintEngineTest {
         assertTrue(Color.RAINBOW in result.cards[0].knowledge.possibleColors)
         assertTrue(Color.RAINBOW !in result.cards[1].knowledge.possibleColors)
     }
+
+    @Test fun contradictoryHintIsNotRecorded() {
+        val state = GameState.new(Ruleset.forPreset(Preset.STANDARD), 4)
+        val knownRed = HintEngine.applyHint(state, HintKind.COLOR, Color.RED.name, setOf(1L))
+        val contradictory = HintEngine.applyHint(knownRed, HintKind.COLOR, Color.BLUE.name, setOf(1L))
+        assertEquals(knownRed, contradictory)
+    }
 }

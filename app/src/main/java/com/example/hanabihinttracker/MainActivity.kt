@@ -55,6 +55,7 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
     var displayOrder by remember { mutableStateOf<List<TrackedCard>>(emptyList()) }
     var draggingId by remember { mutableStateOf<Long?>(null) }
     var dragOffsetX by remember { mutableFloatStateOf(0f) }
+    var dragOffsetY by remember { mutableFloatStateOf(0f) }
     var dragStartIndex by remember { mutableIntStateOf(-1) }
     var dragCurrentIndex by remember { mutableIntStateOf(-1) }
     var cardWidthPx by remember { mutableIntStateOf(0) }
@@ -71,6 +72,7 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
         dragStartIndex = cardsToShow.indexOfFirst { it.id == card.id }
         dragCurrentIndex = dragStartIndex
         dragOffsetX = 0f
+        dragOffsetY = 0f
     }
 
     fun moveDraggedCard(deltaX: Float) {
@@ -86,6 +88,7 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
         if (play && id != null) vm.play(id) else if (start >= 0 && end >= 0 && start != end) vm.reorder(start, end)
         draggingId = null
         dragOffsetX = 0f
+        dragOffsetY = 0f
         dragStartIndex = -1
         dragCurrentIndex = -1
         displayOrder = if (play) state.cards else displayOrder
@@ -94,6 +97,7 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
     fun cancelCardDrag() {
         draggingId = null
         dragOffsetX = 0f
+        dragOffsetY = 0f
         dragStartIndex = -1
         dragCurrentIndex = -1
         displayOrder = state.cards
@@ -120,7 +124,31 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                         add(dragCurrentIndex.coerceIn(0, size), null)
                     }
                 }
-                Box(Modifier.fillMaxWidth().height(270.dp)) {
+                Box(
+                    Modifier.fillMaxWidth().height(270.dp)
+                        .pointerInput(reorderStepPx, cardsToShow) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { position ->
+                                    if (reorderStepPx > 0f && cardsToShow.isNotEmpty()) {
+                                        val index = (position.x / reorderStepPx).toInt()
+                                            .coerceIn(0, cardsToShow.lastIndex)
+                                        beginCardDrag(cardsToShow[index])
+                                    }
+                                },
+                                onDrag = { change, amount ->
+                                    if (draggingId != null) {
+                                        change.consume()
+                                        dragOffsetY += amount.y
+                                        moveDraggedCard(amount.x)
+                                    }
+                                },
+                                onDragEnd = {
+                                    if (draggingId != null) endCardDrag(play = dragOffsetY < -70f)
+                                },
+                                onDragCancel = { if (draggingId != null) cancelCardDrag() }
+                            )
+                        }
+                ) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     rowSlots.forEachIndexed { index, card ->
                         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -134,12 +162,7 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                                     onSelect = { selectedCard = card.id },
                                     onPlay = { if (draggingId == null) vm.play(card.id) else endCardDrag(play = true); selectedCard = null },
                                     dragging = false,
-                                    dragOffsetX = 0f,
-                                    onCardWidthChanged = { cardWidthPx = it },
-                                    onDragStart = { beginCardDrag(card) },
-                                    onDragDelta = ::moveDraggedCard,
-                                    onDragEnd = { endCardDrag() },
-                                    onDragCancel = ::cancelCardDrag
+                                    onCardWidthChanged = { cardWidthPx = it }
                                 )
                                 ReorderMarker(
                                     moveLeft = { vm.reorder(cardsToShow.indexOfFirst { it.id == card.id }, (cardsToShow.indexOfFirst { it.id == card.id } - 1).coerceAtLeast(0)) },
@@ -157,13 +180,15 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                             onSelect = { selectedCard = draggedCard.id },
                             onPlay = { endCardDrag(play = true); selectedCard = null },
                             dragging = true,
-                            dragOffsetX = 0f,
                             onCardWidthChanged = { cardWidthPx = it },
-                            onDragStart = { beginCardDrag(draggedCard) },
-                            onDragDelta = ::moveDraggedCard,
-                            onDragEnd = { endCardDrag() },
-                            onDragCancel = ::cancelCardDrag,
-                            modifier = Modifier.width(with(density) { cardWidthPx.coerceAtLeast(1).toDp() }).offset { androidx.compose.ui.unit.IntOffset((dragStartIndex * reorderStepPx + dragOffsetX).roundToInt(), 0) }
+                            modifier = Modifier
+                                .width(with(density) { cardWidthPx.coerceAtLeast(1).toDp() })
+                                .offset {
+                                    androidx.compose.ui.unit.IntOffset(
+                                        (dragStartIndex * reorderStepPx + dragOffsetX).roundToInt(),
+                                        dragOffsetY.roundToInt()
+                                    )
+                                }
                         )
                     }
                 }
@@ -173,7 +198,18 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                 HistoryPanel(state.history, state)
             }
         }
-        if (hintDialog) HintDialog(state, onDismiss = { hintDialog = false }, onConfirm = { kind, value, matches -> vm.applyHint(kind, value, matches); hintDialog = false })
+        if (hintDialog) HintDialog(
+            state,
+            onDismiss = { hintDialog = false },
+            onConfirm = { kind, value, matches ->
+                if (vm.applyHint(kind, value, matches)) {
+                    hintDialog = false
+                    null
+                } else {
+                    "That hint contradicts the information already recorded for one or more cards."
+                }
+            }
+        )
         if (settingsDialog) SettingsDialog(
             state = state,
             onDismiss = { settingsDialog = false },
@@ -192,37 +228,15 @@ private fun KnowledgeCard(
     onSelect: () -> Unit,
     onPlay: () -> Unit,
     dragging: Boolean,
-    dragOffsetX: Float,
     onCardWidthChanged: (Int) -> Unit,
-    onDragStart: () -> Unit,
-    onDragDelta: (Float) -> Unit,
-    onDragEnd: () -> Unit,
-    onDragCancel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var dragY by remember { mutableFloatStateOf(0f) }
     val knownColor = card.knowledge.possibleColors.singleOrNull()
     val knownNumber = card.knowledge.possibleNumbers.singleOrNull()
-    val currentOnDragStart by rememberUpdatedState(onDragStart)
-    val currentOnDragDelta by rememberUpdatedState(onDragDelta)
-    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
-    val currentOnDragCancel by rememberUpdatedState(onDragCancel)
-    val currentOnPlay by rememberUpdatedState(onPlay)
     Card(
         modifier.fillMaxWidth().height(224.dp).onSizeChanged { onCardWidthChanged(it.width) }
-            .graphicsLayer { translationX = if (dragging) dragOffsetX else 0f; translationY = if (dragging) -12.dp.toPx() else 0f }
+            .graphicsLayer { translationY = if (dragging) -12.dp.toPx() else 0f }
             .zIndex(if (dragging) 1f else 0f)
-            .pointerInput(card.id) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = { currentOnDragStart() },
-                    onDrag = { change, amount -> change.consume(); dragY += amount.y; currentOnDragDelta(amount.x) },
-                    onDragEnd = {
-                        if (dragY < -70) currentOnPlay() else currentOnDragEnd()
-                        dragY = 0f
-                    },
-                    onDragCancel = { dragY = 0f; currentOnDragCancel() }
-                )
-            },
         colors = CardDefaults.cardColors(containerColor = when {
             selected -> MaterialTheme.colorScheme.primaryContainer
             knownColor != null -> UiColor.Transparent
@@ -317,10 +331,11 @@ private fun NumberSquare(number: Int, size: androidx.compose.ui.unit.Dp) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun HintDialog(state: GameState, onDismiss: () -> Unit, onConfirm: (HintKind, String, Set<Long>) -> Unit) {
+private fun HintDialog(state: GameState, onDismiss: () -> Unit, onConfirm: (HintKind, String, Set<Long>) -> String?) {
     var kind by remember { mutableStateOf(HintKind.COLOR) }
     var value by remember { mutableStateOf(state.ruleset.hintableColors.first().name) }
     var matches by remember { mutableStateOf(emptySet<Long>()) }
+    var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Record a hint") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             FlowRow(maxItemsInEachRow = 6, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -335,8 +350,9 @@ private fun HintDialog(state: GameState, onDismiss: () -> Unit, onConfirm: (Hint
             }
             Text("Tap the cards that match", style = MaterialTheme.typography.labelMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { state.cards.forEachIndexed { i, card -> FilterChip(card.id in matches, { matches = if (card.id in matches) matches - card.id else matches + card.id }, label = { Text("${i + 1}") }) } }
+            if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
-    }, confirmButton = { Button(onClick = { onConfirm(kind, value, matches) }, enabled = matches.isNotEmpty()) { Text("Save hint") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+    }, confirmButton = { Button(onClick = { error = onConfirm(kind, value, matches) }, enabled = matches.isNotEmpty()) { Text("Save hint") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
 }
 
 @Composable

@@ -103,6 +103,10 @@ object HintEngine {
             }
             card.copy(knowledge = knowledge)
         }
+        // Never record a hint that leaves a card with no possible identity.
+        if (updated.any { it.knowledge.possibleColors.isEmpty() || it.knowledge.possibleNumbers.isEmpty() }) {
+            return state
+        }
         return state.copy(cards = updated, history = state.history + HintRecord(System.nanoTime(), kind, value, matches))
     }
 

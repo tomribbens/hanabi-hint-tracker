@@ -28,7 +28,14 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
     fun setDirection(fromRight: Boolean) = update { it.copy(replacementFromRight = fromRight) }
     fun setDarkBackground(enabled: Boolean) = update { it.copy(darkBackground = enabled) }
-    fun applyHint(kind: HintKind, value: String, matches: Set<Long>) = update { HintEngine.applyHint(it, kind, value, matches) }
+    fun applyHint(kind: HintKind, value: String, matches: Set<Long>): Boolean {
+        val before = _state.value
+        val after = HintEngine.applyHint(before, kind, value, matches)
+        if (after.history.size == before.history.size) return false
+        _state.value = after
+        viewModelScope.launch { repository.save(after) }
+        return true
+    }
     fun undo() = update(HintEngine::undo)
     fun play(cardId: Long) = update { HintEngine.play(it, cardId) }
     fun reorder(from: Int, to: Int) = update { state -> state.copy(cards = state.cards.toMutableList().apply { add(to.coerceIn(0, size - 1), removeAt(from)) }) }
