@@ -201,6 +201,8 @@ private fun KnowledgeCard(
     modifier: Modifier = Modifier
 ) {
     var dragY by remember { mutableFloatStateOf(0f) }
+    val knownColor = card.knowledge.possibleColors.singleOrNull()
+    val knownNumber = card.knowledge.possibleNumbers.singleOrNull()
     val currentOnDragStart by rememberUpdatedState(onDragStart)
     val currentOnDragDelta by rememberUpdatedState(onDragDelta)
     val currentOnDragEnd by rememberUpdatedState(onDragEnd)
@@ -221,18 +223,26 @@ private fun KnowledgeCard(
                     onDragCancel = { dragY = 0f; currentOnDragCancel() }
                 )
             },
-        colors = CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
+        colors = CardDefaults.cardColors(containerColor = when {
+            selected -> MaterialTheme.colorScheme.primaryContainer
+            knownColor != null -> UiColor.Transparent
+            else -> MaterialTheme.colorScheme.surface
+        })
     ) {
-        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Column(
+            Modifier.fillMaxSize().then(if (knownColor != null && !selected) Modifier.background(knownColor.brush()) else Modifier)
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 IconButton(onClick = onSelect, modifier = Modifier.size(25.dp)) { Icon(if (selected) Icons.Default.Check else Icons.Default.MoreVert, "Select") }
             }
-            if (card.knowledge.possibleColors.size == 1 && card.knowledge.possibleNumbers.size == 1) {
-                val color = card.knowledge.possibleColors.first()
+            if (knownNumber != null) {
                 Box(
-                    Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(12.dp)).background(color.brush()),
+                    Modifier.fillMaxWidth().weight(1f),
                     contentAlignment = Alignment.Center
-                ) { Text(card.knowledge.possibleNumbers.first().toString(), fontSize = 72.sp, fontWeight = FontWeight.Bold, color = color.textColor()) }
+                ) { Text(knownNumber.toString(), fontSize = 72.sp, fontWeight = FontWeight.Bold, color = knownColor?.textColor() ?: MaterialTheme.colorScheme.onSurface) }
+                if (knownColor == null) ColorSquares(card.knowledge.possibleColors)
             } else {
                 ColorSquares(card.knowledge.possibleColors)
                 NumberSquares(card.knowledge.possibleNumbers)
