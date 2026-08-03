@@ -12,7 +12,7 @@ android {
     val ciStorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
     val ciKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
     val ciKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
-    val ciKeystoreFile = ciKeystorePath?.let(::java.io.File)?.takeIf { it.isFile }
+    val ciKeystoreFile = ciKeystorePath?.let { java.io.File(it) }?.takeIf { it.isFile }
     val useCiSigning = ciKeystoreFile != null && !ciStorePassword.isNullOrBlank() && !ciKeyPassword.isNullOrBlank() && !ciKeyAlias.isNullOrBlank()
 
     signingConfigs {
