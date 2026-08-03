@@ -23,12 +23,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color as UiColor
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.zIndex
+import kotlin.math.roundToInt
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -47,6 +52,59 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
     var hintDialog by remember { mutableStateOf(false) }
     var settingsDialog by remember { mutableStateOf(false) }
     var selectedCard by remember { mutableStateOf<Long?>(null) }
+    var displayOrder by remember { mutableStateOf<List<TrackedCard>>(emptyList()) }
+    var draggingId by remember { mutableStateOf<Long?>(null) }
+    var dragOffsetX by remember { mutableFloatStateOf(0f) }
+    var dragStartIndex by remember { mutableIntStateOf(-1) }
+    var dragCurrentIndex by remember { mutableIntStateOf(-1) }
+    var cardWidthPx by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(state.cards) {
+        if (draggingId == null) displayOrder = state.cards
+    }
+    val cardsToShow = if (displayOrder.isEmpty()) state.cards else displayOrder
+    val density = LocalDensity.current
+    val reorderStepPx = cardWidthPx + with(density) { 8.dp.toPx() }
+
+    fun beginCardDrag(card: TrackedCard) {
+        draggingId = card.id
+        dragStartIndex = cardsToShow.indexOfFirst { it.id == card.id }
+        dragCurrentIndex = dragStartIndex
+        dragOffsetX = 0f
+    }
+
+    fun moveDraggedCard(deltaX: Float) {
+        if (draggingId == null || reorderStepPx <= 0f) return
+        dragOffsetX += deltaX
+        while (dragOffsetX > reorderStepPx / 2 && dragCurrentIndex < cardsToShow.lastIndex) {
+            val next = displayOrder.toMutableList()
+            val index = next.indexOfFirst { it.id == draggingId }
+            next[index] = next[index + 1].also { next[index + 1] = next[index] }
+            displayOrder = next
+            dragCurrentIndex++
+            dragOffsetX -= reorderStepPx
+        }
+        while (dragOffsetX < -reorderStepPx / 2 && dragCurrentIndex > 0) {
+            val next = displayOrder.toMutableList()
+            val index = next.indexOfFirst { it.id == draggingId }
+            next[index] = next[index - 1].also { next[index - 1] = next[index] }
+            displayOrder = next
+            dragCurrentIndex--
+            dragOffsetX += reorderStepPx
+        }
+    }
+
+    fun endCardDrag(play: Boolean = false) {
+        val start = dragStartIndex
+        val end = dragCurrentIndex
+        val id = draggingId
+        if (play && id != null) vm.play(id) else if (start >= 0 && end >= 0 && start != end) vm.reorder(start, end)
+        draggingId = null
+        dragOffsetX = 0f
+        dragStartIndex = -1
+        dragCurrentIndex = -1
+        displayOrder = if (play) state.cards else displayOrder
+    }
 
     HanabiTheme(darkBackground = state.darkBackground) {
         Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
@@ -61,14 +119,21 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                     AssistChip(onClick = { hintDialog = true }, label = { Text("Give hint") }, leadingIcon = { Icon(Icons.Default.Add, null) })
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    state.cards.forEachIndexed { index, card ->
+                    cardsToShow.forEachIndexed { index, card ->
                         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                             KnowledgeCard(
                                 card = card,
                                 state = state,
                                 selected = selectedCard == card.id,
                                 onSelect = { selectedCard = card.id },
-                                onPlay = { vm.play(card.id); selectedCard = null }
+                                onPlay = { if (draggingId == null) vm.play(card.id) else endCardDrag(play = true); selectedCard = null },
+                                dragging = draggingId == card.id,
+                                dragOffsetX = if (draggingId == card.id) dragOffsetX else 0f,
+                                onCardWidthChanged = { cardWidthPx = it },
+                                onDragStart = { beginCardDrag(card) },
+                                onDragDelta = ::moveDraggedCard,
+                                onDragEnd = { endCardDrag() },
+                                onDragCancel = { displayOrder = state.cards; draggingId = null; dragOffsetX = 0f }
                             )
                             ReorderMarker(
                                 moveLeft = { vm.reorder(index, (index - 1).coerceAtLeast(0)) },
@@ -95,15 +160,36 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
 }
 
 @Composable
-private fun KnowledgeCard(card: TrackedCard, state: GameState, selected: Boolean, onSelect: () -> Unit, onPlay: () -> Unit) {
+private fun KnowledgeCard(
+    card: TrackedCard,
+    state: GameState,
+    selected: Boolean,
+    onSelect: () -> Unit,
+    onPlay: () -> Unit,
+    dragging: Boolean,
+    dragOffsetX: Float,
+    onCardWidthChanged: (Int) -> Unit,
+    onDragStart: () -> Unit,
+    onDragDelta: (Float) -> Unit,
+    onDragEnd: () -> Unit,
+    onDragCancel: () -> Unit
+) {
     var dragY by remember { mutableFloatStateOf(0f) }
     Card(
-        Modifier.fillMaxWidth().height(224.dp).pointerInput(state.cards) {
-            detectDragGesturesAfterLongPress(onDrag = { change, amount -> change.consume(); dragY += amount.y }, onDragEnd = {
-                if (dragY < -70) onPlay()
-                dragY = 0f
-            }, onDragCancel = { dragY = 0f })
-        },
+        Modifier.fillMaxWidth().height(224.dp).onSizeChanged { onCardWidthChanged(it.width) }
+            .graphicsLayer { translationX = if (dragging) dragOffsetX else 0f; translationY = if (dragging) -12.dp.toPx() else 0f }
+            .zIndex(if (dragging) 1f else 0f)
+            .pointerInput(card.id, dragging) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { onDragStart() },
+                    onDrag = { change, amount -> change.consume(); dragY += amount.y; onDragDelta(amount.x) },
+                    onDragEnd = {
+                        if (dragY < -70) onPlay() else onDragEnd()
+                        dragY = 0f
+                    },
+                    onDragCancel = { dragY = 0f; onDragCancel() }
+                )
+            },
         colors = CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
     ) {
         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
