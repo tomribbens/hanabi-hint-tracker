@@ -25,9 +25,9 @@ jobs:
         with:
           gradle-version: '8.10.2'
       - name: Prepare stable signing key
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         run: echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/hanabi-signing.jks"
       - name: Build and test
         run: gradle testDebugUnitTest assembleDebug --stacktrace
