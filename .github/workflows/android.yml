@@ -29,6 +29,8 @@ jobs:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         run: echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/hanabi-signing.jks"
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses > /dev/null || true
       - name: Enable Android emulator acceleration
         run: sudo chmod 666 /dev/kvm
       - name: Build and test
