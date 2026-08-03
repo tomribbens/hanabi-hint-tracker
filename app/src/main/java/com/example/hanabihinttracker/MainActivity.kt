@@ -7,9 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -24,10 +23,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color as UiColor
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.hanabihinttracker.domain.*
 
@@ -57,14 +59,9 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                     Spacer(Modifier.weight(1f))
                     AssistChip(onClick = { hintDialog = true }, label = { Text("Give hint") }, leadingIcon = { Icon(Icons.Default.Add, null) })
                 }
-                Box(
-                    Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center
-                ) { Text("Drag a card here to play it", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium) }
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    itemsIndexed(state.cards, key = { _, card -> card.id }) { index, card ->
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    state.cards.forEachIndexed { index, card ->
+                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                             KnowledgeCard(
                                 card = card,
                                 state = state,
@@ -100,7 +97,7 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
 private fun KnowledgeCard(card: TrackedCard, state: GameState, selected: Boolean, onSelect: () -> Unit, onPlay: () -> Unit) {
     var dragY by remember { mutableFloatStateOf(0f) }
     Card(
-        Modifier.width(142.dp).height(224.dp).pointerInput(state.cards) {
+        Modifier.fillMaxWidth().height(224.dp).pointerInput(state.cards) {
             detectDragGesturesAfterLongPress(onDrag = { change, amount -> change.consume(); dragY += amount.y }, onDragEnd = {
                 if (dragY < -70) onPlay()
                 dragY = 0f
@@ -108,20 +105,18 @@ private fun KnowledgeCard(card: TrackedCard, state: GameState, selected: Boolean
         },
         colors = CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
     ) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 IconButton(onClick = onSelect, modifier = Modifier.size(25.dp)) { Icon(if (selected) Icons.Default.Check else Icons.Default.MoreVert, "Select") }
             }
             if (card.knowledge.possibleColors.size == 1 && card.knowledge.possibleNumbers.size == 1) {
                 val color = card.knowledge.possibleColors.first()
                 Box(
-                    Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(12.dp)).background(color.uiColor()),
+                    Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(12.dp)).background(color.brush()),
                     contentAlignment = Alignment.Center
                 ) { Text(card.knowledge.possibleNumbers.first().toString(), fontSize = 72.sp, fontWeight = FontWeight.Bold, color = color.textColor()) }
             } else {
-                Text("Colors", style = MaterialTheme.typography.labelSmall)
                 ColorSquares(card.knowledge.possibleColors)
-                Text("Numbers", style = MaterialTheme.typography.labelSmall)
                 NumberSquares(card.knowledge.possibleNumbers)
                 Spacer(Modifier.weight(1f))
             }
@@ -138,7 +133,7 @@ private fun KnowledgeCard(card: TrackedCard, state: GameState, selected: Boolean
 private fun ReorderMarker(moveLeft: () -> Unit, moveRight: () -> Unit) {
     var dragX by remember { mutableFloatStateOf(0f) }
     Box(
-        Modifier.padding(top = 3.dp).width(142.dp).height(28.dp).clip(RoundedCornerShape(8.dp))
+        Modifier.padding(top = 3.dp).fillMaxWidth().height(28.dp).clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant).pointerInput(Unit) {
                 detectDragGesturesAfterLongPress(onDrag = { change, amount -> change.consume(); dragX += amount.x }, onDragEnd = {
                     if (kotlin.math.abs(dragX) > 35) if (dragX < 0) moveLeft() else moveRight()
@@ -150,21 +145,30 @@ private fun ReorderMarker(moveLeft: () -> Unit, moveRight: () -> Unit) {
 }
 
 @Composable
-private fun ColorSquares(colors: Set<Color>) { Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { colors.forEach { ColorSquare(it, 24.dp) } } }
-
-@Composable
-private fun ColorSquare(color: Color, size: androidx.compose.ui.unit.Dp) {
-    Box(Modifier.size(size).clip(RoundedCornerShape(4.dp)).background(color.uiColor()).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp)))
+private fun ColorSquares(colors: Set<Color>) {
+    FlowRow(maxItemsInEachRow = 5, horizontalArrangement = Arrangement.spacedBy(3.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        colors.forEach { ColorSquare(it, 20.dp) }
+    }
 }
 
 @Composable
-private fun NumberSquares(numbers: Set<Int>) { Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { numbers.sorted().forEach { NumberSquare(it, 24.dp) } } }
+private fun ColorSquare(color: Color, size: androidx.compose.ui.unit.Dp) {
+    Box(Modifier.size(size).clip(RoundedCornerShape(4.dp)).background(color.brush()).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp)))
+}
+
+@Composable
+private fun NumberSquares(numbers: Set<Int>) {
+    FlowRow(maxItemsInEachRow = 5, horizontalArrangement = Arrangement.spacedBy(3.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        numbers.sorted().forEach { NumberSquare(it, 20.dp) }
+    }
+}
 
 @Composable
 private fun NumberSquare(number: Int, size: androidx.compose.ui.unit.Dp) {
     Box(Modifier.size(size).clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) { Text(number.toString(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold) }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HintDialog(state: GameState, onDismiss: () -> Unit, onConfirm: (HintKind, String, Set<Long>) -> Unit) {
     var kind by remember { mutableStateOf(HintKind.COLOR) }
@@ -173,15 +177,16 @@ private fun HintDialog(state: GameState, onDismiss: () -> Unit, onConfirm: (Hint
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Record a hint") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { FilterChip(kind == HintKind.COLOR, { kind = HintKind.COLOR }, label = { Text("Color") }); FilterChip(kind == HintKind.NUMBER, { kind = HintKind.NUMBER }, label = { Text("Number") }) }
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FlowRow(maxItemsInEachRow = 6, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 val options: List<Any> = if (kind == HintKind.COLOR) state.ruleset.hintableColors.toList() else state.ruleset.numbers.toList()
-                items(items = options) { item ->
+                options.forEach { item ->
                     val itemValue = if (item is Color) item.name else item.toString()
-                    FilterChip(value == itemValue, { value = itemValue }, label = { Text(if (item is Color) item.label else "#$itemValue") })
+                    if (item is Color) SelectableColorSquare(item, value == itemValue) { value = itemValue }
+                    else SelectableNumberSquare(itemValue.toInt(), value == itemValue) { value = itemValue }
                 }
             }
             Text("Tap the cards that match", style = MaterialTheme.typography.labelMedium)
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { itemsIndexed(state.cards) { i, card -> FilterChip(card.id in matches, { matches = if (card.id in matches) matches - card.id else matches + card.id }, label = { Text("${i + 1}") }) } }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { state.cards.forEachIndexed { i, card -> FilterChip(card.id in matches, { matches = if (card.id in matches) matches - card.id else matches + card.id }, label = { Text("${i + 1}") }) } }
         }
     }, confirmButton = { Button(onClick = { onConfirm(kind, value, matches) }, enabled = matches.isNotEmpty()) { Text("Save hint") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
 }
@@ -199,7 +204,7 @@ private fun SettingsDialog(state: GameState, onDismiss: () -> Unit, onNewGame: (
     var preset by remember { mutableStateOf(state.ruleset.preset) }
     var size by remember { mutableIntStateOf(state.handSize) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Settings") }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Preset", style = MaterialTheme.typography.labelLarge)
             Preset.entries.forEach { FilterChip(preset == it, { preset = it }, label = { Text(it.title) }) }
             Row(verticalAlignment = Alignment.CenterVertically) { Text("Hand size", Modifier.weight(1f)); FilterChip(size == 4, { size = 4 }, label = { Text("4") }); Spacer(Modifier.width(6.dp)); FilterChip(size == 5, { size = 5 }, label = { Text("5") }) }
@@ -211,6 +216,16 @@ private fun SettingsDialog(state: GameState, onDismiss: () -> Unit, onNewGame: (
 }
 
 @Composable
+private fun SelectableColorSquare(color: Color, selected: Boolean, onClick: () -> Unit) {
+    Box(Modifier.size(34.dp).clip(RoundedCornerShape(5.dp)).background(color.brush()).border(if (selected) 3.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, RoundedCornerShape(5.dp)).clickable(onClick = onClick))
+}
+
+@Composable
+private fun SelectableNumberSquare(number: Int, selected: Boolean, onClick: () -> Unit) {
+    Box(Modifier.size(34.dp).clip(RoundedCornerShape(5.dp)).background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant).border(if (selected) 3.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, RoundedCornerShape(5.dp)).clickable(onClick = onClick), contentAlignment = Alignment.Center) { Text(number.toString(), fontWeight = FontWeight.Bold) }
+}
+
+@Composable
 private fun HanabiTheme(darkBackground: Boolean, content: @Composable () -> Unit) {
     val colors = if (darkBackground) darkColorScheme(background = UiColor.Black, surface = UiColor(0xFF1B1B1B), surfaceVariant = UiColor(0xFF303030)) else lightColorScheme(primary = UiColor(0xFF5A3E85), secondary = UiColor(0xFF176B87))
     MaterialTheme(colorScheme = colors, content = content)
@@ -218,3 +233,4 @@ private fun HanabiTheme(darkBackground: Boolean, content: @Composable () -> Unit
 
 private fun Color.uiColor() = UiColor(hex)
 private fun Color.textColor() = if (this == Color.WHITE || this == Color.YELLOW) UiColor.Black else UiColor.White
+private fun Color.brush(): Brush = if (this == Color.RAINBOW) Brush.linearGradient(listOf(UiColor.Red, UiColor.Yellow, UiColor.Green, UiColor.Cyan, UiColor.Blue, UiColor.Magenta)) else Brush.solidColor(uiColor())

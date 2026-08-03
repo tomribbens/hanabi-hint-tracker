@@ -23,7 +23,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.save(next) }
     }
 
-    fun newGame(preset: Preset, handSize: Int) = update { GameState.new(Ruleset.forPreset(preset), handSize, it.replacementFromRight) }
+    fun newGame(preset: Preset, handSize: Int) = update { GameState.new(Ruleset.forPreset(preset), handSize, it.replacementFromRight).copy(darkBackground = it.darkBackground) }
     fun setDirection(fromRight: Boolean) = update { it.copy(replacementFromRight = fromRight) }
     fun setDarkBackground(enabled: Boolean) = update { it.copy(darkBackground = enabled) }
     fun applyHint(kind: HintKind, value: String, matches: Set<Long>) = update { HintEngine.applyHint(it, kind, value, matches) }
