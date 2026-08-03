@@ -14,12 +14,11 @@ class HintEngineTest {
         assertEquals(1, result.history.size)
     }
 
-    @Test fun numberHintsAccumulate() {
+    @Test fun contradictoryNumberHintIsNotRecorded() {
         val state = GameState.new(Ruleset.forPreset(Preset.STANDARD), 4)
         val result = HintEngine.applyHint(state, HintKind.NUMBER, "3", setOf(1L))
         val second = HintEngine.applyHint(result, HintKind.NUMBER, "4", setOf(1L))
-        assertEquals(emptySet<Int>(), second.cards[0].knowledge.possibleNumbers)
-        assertEquals(listOf(3, 4), second.cards[0].knowledge.numberHints)
+        assertEquals(result, second)
     }
 
     @Test fun playAddsUnknownCardAtConfiguredEdge() {
