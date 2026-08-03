@@ -5,8 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.clickable
@@ -17,7 +19,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DragHandle
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,6 +29,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color as UiColor
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.awaitFirstDown
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -50,7 +54,6 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun HanabiApp(vm: GameViewModel = viewModel()) {
     val state by vm.state.collectAsState()
-    var givingHint by remember { mutableStateOf(false) }
     var selectedHint by remember { mutableStateOf<Pair<HintKind, String>?>(null) }
     var hintMatches by remember { mutableStateOf(emptySet<Long>()) }
     var hintError by remember { mutableStateOf<String?>(null) }
@@ -120,53 +123,41 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = vm::undo, enabled = state.history.isNotEmpty()) { Icon(Icons.AutoMirrored.Filled.Undo, "Undo") }
                     IconButton(onClick = { settingsDialog = true }) { Icon(Icons.Default.Settings, "Settings") }
-                    if (!givingHint) {
-                        Spacer(Modifier.weight(1f))
-                        AssistChip(onClick = {
-                            givingHint = true
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        state.ruleset.hintableColors.forEach { color ->
+                            SelectableColorSquare(color, selectedHint == (HintKind.COLOR to color.name), 28.dp) {
+                                selectedHint = HintKind.COLOR to color.name
+                                hintError = null
+                            }
+                            Spacer(Modifier.width(3.dp))
+                        }
+                        state.ruleset.numbers.sorted().forEach { number ->
+                            SelectableNumberSquare(number, selectedHint == (HintKind.NUMBER to number.toString()), 28.dp) {
+                                selectedHint = HintKind.NUMBER to number.toString()
+                                hintError = null
+                            }
+                            Spacer(Modifier.width(3.dp))
+                        }
+                        IconButton(
+                            onClick = {
+                                val hint = selectedHint
+                                if (hint != null && hintMatches.isNotEmpty()) {
+                                    if (vm.applyHint(hint.first, hint.second, hintMatches)) {
+                                        selectedHint = null
+                                        hintMatches = emptySet()
+                                        hintError = null
+                                    } else {
+                                        hintError = "That hint contradicts recorded information."
+                                    }
+                                }
+                            },
+                            enabled = selectedHint != null && hintMatches.isNotEmpty()
+                        ) { Icon(Icons.Default.Check, "Commit hint", tint = UiColor(0xFF2E7D32)) }
+                        IconButton(onClick = {
                             selectedHint = null
                             hintMatches = emptySet()
                             hintError = null
-                        }, label = { Text("Give hint") }, leadingIcon = { Icon(Icons.Default.Add, null) })
-                    } else {
-                        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                            state.ruleset.hintableColors.forEach { color ->
-                                SelectableColorSquare(color, selectedHint == (HintKind.COLOR to color.name), 28.dp) {
-                                    selectedHint = HintKind.COLOR to color.name
-                                    hintError = null
-                                }
-                                Spacer(Modifier.width(3.dp))
-                            }
-                            state.ruleset.numbers.sorted().forEach { number ->
-                                SelectableNumberSquare(number, selectedHint == (HintKind.NUMBER to number.toString()), 28.dp) {
-                                    selectedHint = HintKind.NUMBER to number.toString()
-                                    hintError = null
-                                }
-                                Spacer(Modifier.width(3.dp))
-                            }
-                            IconButton(
-                                onClick = {
-                                    val hint = selectedHint
-                                    if (hint != null && hintMatches.isNotEmpty()) {
-                                        if (vm.applyHint(hint.first, hint.second, hintMatches)) {
-                                            givingHint = false
-                                            selectedHint = null
-                                            hintMatches = emptySet()
-                                            hintError = null
-                                        } else {
-                                            hintError = "That hint contradicts recorded information."
-                                        }
-                                    }
-                                },
-                                enabled = selectedHint != null && hintMatches.isNotEmpty()
-                            ) { Icon(Icons.Default.Check, "Commit hint", tint = UiColor(0xFF2E7D32)) }
-                            IconButton(onClick = {
-                                givingHint = false
-                                selectedHint = null
-                                hintMatches = emptySet()
-                                hintError = null
-                            }) { Icon(Icons.Default.Close, "Cancel hint", tint = UiColor(0xFFC62828)) }
-                        }
+                        }) { Icon(Icons.Default.Close, "Cancel hint", tint = UiColor(0xFFC62828)) }
                     }
                 }
                 val draggedCard = draggingId?.let { id -> cardsToShow.firstOrNull { it.id == id } }
@@ -181,26 +172,26 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                 Box(
                     Modifier.fillMaxWidth().height(270.dp).onSizeChanged { handWidthPx = it.width }
                         .pointerInput(reorderStepPx, cardsToShow) {
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = { position ->
-                                    if (reorderStepPx > 0f && cardsToShow.isNotEmpty()) {
-                                        val index = (position.x / reorderStepPx).toInt()
-                                            .coerceIn(0, cardsToShow.lastIndex)
-                                        beginCardDrag(cardsToShow[index])
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                val longPress = awaitLongPressOrCancellation(down.id)
+                                if (longPress == null) {
+                                    if (draggingId != null) cancelCardDrag()
+                                } else if (reorderStepPx > 0f && cardsToShow.isNotEmpty()) {
+                                    val index = (longPress.position.x / reorderStepPx).toInt()
+                                        .coerceIn(0, cardsToShow.lastIndex)
+                                    beginCardDrag(cardsToShow[index])
+                                    val completed = drag(longPress.id) { change ->
+                                        val amount = change.positionChange()
+                                        if (amount.x != 0f || amount.y != 0f) {
+                                            change.consume()
+                                            dragOffsetY += amount.y
+                                            moveDraggedCard(amount.x)
+                                        }
                                     }
-                                },
-                                onDrag = { change, amount ->
-                                    if (draggingId != null) {
-                                        change.consume()
-                                        dragOffsetY += amount.y
-                                        moveDraggedCard(amount.x)
-                                    }
-                                },
-                                onDragEnd = {
-                                    if (draggingId != null) endCardDrag(play = dragOffsetY < -70f)
-                                },
-                                onDragCancel = { if (draggingId != null) cancelCardDrag() }
-                            )
+                                    if (completed) endCardDrag(play = dragOffsetY < -70f) else cancelCardDrag()
+                                }
+                            }
                         }
                 ) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -212,12 +203,12 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                                 KnowledgeCard(
                                     card = card,
                                     state = state,
-                                    selected = if (givingHint) card.id in hintMatches else selectedCard == card.id,
+                                    selected = if (selectedHint != null) card.id in hintMatches else selectedCard == card.id,
                                     onSelect = {
-                                        if (givingHint) hintMatches = if (card.id in hintMatches) hintMatches - card.id else hintMatches + card.id
+                                        if (selectedHint != null) hintMatches = if (card.id in hintMatches) hintMatches - card.id else hintMatches + card.id
                                         else selectedCard = card.id
                                     },
-                                    onPlay = { if (!givingHint) { if (draggingId == null) vm.play(card.id) else endCardDrag(play = true); selectedCard = null } },
+                                    onPlay = { if (selectedHint == null) { if (draggingId == null) vm.play(card.id) else endCardDrag(play = true); selectedCard = null } },
                                     dragging = false,
                                     onCardWidthChanged = { cardWidthPx = it }
                                 )
@@ -233,7 +224,7 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                         KnowledgeCard(
                             card = draggedCard,
                             state = state,
-                            selected = if (givingHint) draggedCard.id in hintMatches else selectedCard == draggedCard.id,
+                            selected = if (selectedHint != null) draggedCard.id in hintMatches else selectedCard == draggedCard.id,
                             onSelect = { selectedCard = draggedCard.id },
                             onPlay = { endCardDrag(play = true); selectedCard = null },
                             dragging = true,
@@ -252,7 +243,7 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                 if (hintError != null) {
                     Text(hintError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
-                if (selectedCard != null && !givingHint) {
+                if (selectedCard != null && selectedHint == null) {
                     Button(onClick = { vm.play(selectedCard!!); selectedCard = null }, modifier = Modifier.fillMaxWidth()) { Text("Play selected card") }
                 }
                 HistoryPanel(state.history, state)
@@ -283,6 +274,7 @@ private fun KnowledgeCard(
     val knownNumber = card.knowledge.possibleNumbers.singleOrNull()
     Card(
         modifier.fillMaxWidth().height(224.dp).onSizeChanged { onCardWidthChanged(it.width) }
+            .clickable(onClick = onSelect)
             .graphicsLayer {
                 translationY = if (dragging) -18.dp.toPx() else 0f
                 scaleX = if (dragging) 1.08f else 1f
@@ -301,9 +293,7 @@ private fun KnowledgeCard(
                 .padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                IconButton(onClick = onSelect, modifier = Modifier.size(25.dp)) { Icon(if (selected) Icons.Default.Check else Icons.Default.MoreVert, "Select") }
-            }
+            Spacer(Modifier.height(25.dp))
             if (knownNumber != null) {
                 Box(
                     Modifier.fillMaxWidth().weight(1f),
