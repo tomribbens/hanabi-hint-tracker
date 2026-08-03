@@ -79,7 +79,7 @@ object HintEngine {
                 HintKind.COLOR -> {
                     val color = Color.valueOf(value)
                     val colors = if (isMatch) card.knowledge.possibleColors.filter { state.ruleset.matchesColor(it, color) }.toSet()
-                    else card.knowledge.possibleColors - color
+                    else card.knowledge.possibleColors - color - if (state.ruleset.multicolor) setOf(Color.RAINBOW) else emptySet()
                     card.knowledge.copy(possibleColors = colors, colorHints = if (isMatch) card.knowledge.colorHints + color else card.knowledge.colorHints)
                 }
                 HintKind.NUMBER -> {

@@ -39,4 +39,11 @@ class HintEngineTest {
         assertEquals(state.cards.map { it.knowledge }, undone.cards.map { it.knowledge })
         assertTrue(undone.history.isEmpty())
     }
+
+    @Test fun unmatchedRainbowMulticolorCardLosesRainbowPossibility() {
+        val state = GameState.new(Ruleset.forPreset(Preset.RAINBOW_MULTI), 4)
+        val result = HintEngine.applyHint(state, HintKind.COLOR, Color.RED.name, setOf(1L))
+        assertTrue(Color.RAINBOW in result.cards[0].knowledge.possibleColors)
+        assertTrue(Color.RAINBOW !in result.cards[1].knowledge.possibleColors)
+    }
 }
