@@ -113,8 +113,12 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                 }
                 val draggedCard = draggingId?.let { id -> cardsToShow.firstOrNull { it.id == id } }
                 val visibleCards = if (draggedCard == null) cardsToShow else cardsToShow.filterNot { it.id == draggedCard.id }
-                val rowSlots: List<TrackedCard?> = if (draggedCard == null) cardsToShow else visibleCards.toMutableList().apply {
-                    add(dragCurrentIndex.coerceIn(0, size), null)
+                val rowSlots: List<TrackedCard?> = if (draggedCard == null) {
+                    cardsToShow
+                } else {
+                    visibleCards.map<TrackedCard, TrackedCard?> { it }.toMutableList().apply {
+                        add(dragCurrentIndex.coerceIn(0, size), null)
+                    }
                 }
                 Box(Modifier.fillMaxWidth().height(270.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
