@@ -79,7 +79,8 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
         while (dragOffsetX > reorderStepPx / 2 && dragCurrentIndex < cardsToShow.lastIndex) {
             val next = displayOrder.toMutableList()
             val index = next.indexOfFirst { it.id == draggingId }
-            next[index] = next[index + 1].also { next[index + 1] = next[index] }
+            val moved = next.removeAt(index)
+            next.add(index + 1, moved)
             displayOrder = next
             dragCurrentIndex++
             dragOffsetX -= reorderStepPx
@@ -87,7 +88,8 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
         while (dragOffsetX < -reorderStepPx / 2 && dragCurrentIndex > 0) {
             val next = displayOrder.toMutableList()
             val index = next.indexOfFirst { it.id == draggingId }
-            next[index] = next[index - 1].also { next[index - 1] = next[index] }
+            val moved = next.removeAt(index)
+            next.add(index - 1, moved)
             displayOrder = next
             dragCurrentIndex--
             dragOffsetX += reorderStepPx
@@ -175,19 +177,24 @@ private fun KnowledgeCard(
     onDragCancel: () -> Unit
 ) {
     var dragY by remember { mutableFloatStateOf(0f) }
+    val currentOnDragStart by rememberUpdatedState(onDragStart)
+    val currentOnDragDelta by rememberUpdatedState(onDragDelta)
+    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+    val currentOnDragCancel by rememberUpdatedState(onDragCancel)
+    val currentOnPlay by rememberUpdatedState(onPlay)
     Card(
         Modifier.fillMaxWidth().height(224.dp).onSizeChanged { onCardWidthChanged(it.width) }
             .graphicsLayer { translationX = if (dragging) dragOffsetX else 0f; translationY = if (dragging) -12.dp.toPx() else 0f }
             .zIndex(if (dragging) 1f else 0f)
-            .pointerInput(card.id, dragging) {
+            .pointerInput(card.id) {
                 detectDragGesturesAfterLongPress(
-                    onDragStart = { onDragStart() },
-                    onDrag = { change, amount -> change.consume(); dragY += amount.y; onDragDelta(amount.x) },
+                    onDragStart = { currentOnDragStart() },
+                    onDrag = { change, amount -> change.consume(); dragY += amount.y; currentOnDragDelta(amount.x) },
                     onDragEnd = {
-                        if (dragY < -70) onPlay() else onDragEnd()
+                        if (dragY < -70) currentOnPlay() else currentOnDragEnd()
                         dragY = 0f
                     },
-                    onDragCancel = { dragY = 0f; onDragCancel() }
+                    onDragCancel = { dragY = 0f; currentOnDragCancel() }
                 )
             },
         colors = CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
@@ -228,7 +235,11 @@ private fun ReorderMarker(moveLeft: () -> Unit, moveRight: () -> Unit) {
                 }, onDragCancel = { dragX = 0f })
             },
         contentAlignment = Alignment.Center
-    ) { Icon(Icons.Default.MoreVert, "Drag to reorder", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            repeat(2) { Box(Modifier.width(2.dp).height(22.dp).background(MaterialTheme.colorScheme.onSurfaceVariant)) }
+        }
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
