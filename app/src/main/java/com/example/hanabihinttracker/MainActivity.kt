@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.clickable
@@ -82,15 +83,15 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                 HistoryPanel(state.history, state)
             }
         }
+        if (hintDialog) HintDialog(state, onDismiss = { hintDialog = false }, onConfirm = { kind, value, matches -> vm.applyHint(kind, value, matches); hintDialog = false })
+        if (settingsDialog) SettingsDialog(
+            state = state,
+            onDismiss = { settingsDialog = false },
+            onNewGame = { preset, size -> vm.newGame(preset, size); settingsDialog = false },
+            onDirection = vm::setDirection,
+            onDarkBackground = vm::setDarkBackground
+        )
     }
-    if (hintDialog) HintDialog(state, onDismiss = { hintDialog = false }, onConfirm = { kind, value, matches -> vm.applyHint(kind, value, matches); hintDialog = false })
-    if (settingsDialog) SettingsDialog(
-        state = state,
-        onDismiss = { settingsDialog = false },
-        onNewGame = { preset, size -> vm.newGame(preset, size); settingsDialog = false },
-        onDirection = vm::setDirection,
-        onDarkBackground = vm::setDarkBackground
-    )
 }
 
 @Composable
@@ -133,15 +134,15 @@ private fun KnowledgeCard(card: TrackedCard, state: GameState, selected: Boolean
 private fun ReorderMarker(moveLeft: () -> Unit, moveRight: () -> Unit) {
     var dragX by remember { mutableFloatStateOf(0f) }
     Box(
-        Modifier.padding(top = 3.dp).fillMaxWidth().height(28.dp).clip(RoundedCornerShape(8.dp))
+        Modifier.padding(top = 3.dp).width(30.dp).height(42.dp).clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant).pointerInput(Unit) {
-                detectDragGesturesAfterLongPress(onDrag = { change, amount -> change.consume(); dragX += amount.x }, onDragEnd = {
+                detectDragGestures(onDrag = { change, amount -> change.consume(); dragX += amount.x }, onDragEnd = {
                     if (kotlin.math.abs(dragX) > 35) if (dragX < 0) moveLeft() else moveRight()
                     dragX = 0f
                 }, onDragCancel = { dragX = 0f })
             },
         contentAlignment = Alignment.Center
-    ) { Icon(Icons.Default.DragHandle, "Drag to reorder", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+    ) { Icon(Icons.Default.MoreVert, "Drag to reorder", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -178,13 +179,14 @@ private fun HintDialog(state: GameState, onDismiss: () -> Unit, onConfirm: (Hint
     var matches by remember { mutableStateOf(emptySet<Long>()) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Record a hint") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { FilterChip(kind == HintKind.COLOR, { kind = HintKind.COLOR }, label = { Text("Color") }); FilterChip(kind == HintKind.NUMBER, { kind = HintKind.NUMBER }, label = { Text("Number") }) }
             FlowRow(maxItemsInEachRow = 6, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                val options: List<Any> = if (kind == HintKind.COLOR) state.ruleset.hintableColors.toList() else state.ruleset.numbers.toList()
-                options.forEach { item ->
-                    val itemValue = if (item is Color) item.name else item.toString()
-                    if (item is Color) SelectableColorSquare(item, value == itemValue) { value = itemValue }
-                    else SelectableNumberSquare(itemValue.toInt(), value == itemValue) { value = itemValue }
+                state.ruleset.hintableColors.forEach { color ->
+                    SelectableColorSquare(color, kind == HintKind.COLOR && value == color.name) { kind = HintKind.COLOR; value = color.name }
+                }
+            }
+            FlowRow(maxItemsInEachRow = 6, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                state.ruleset.numbers.forEach { number ->
+                    SelectableNumberSquare(number, kind == HintKind.NUMBER && value == number.toString()) { kind = HintKind.NUMBER; value = number.toString() }
                 }
             }
             Text("Tap the cards that match", style = MaterialTheme.typography.labelMedium)

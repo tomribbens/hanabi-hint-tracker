@@ -9,7 +9,9 @@ enum class Color(val label: String, val hex: Long) {
 enum class HintKind { COLOR, NUMBER }
 enum class Preset(val title: String) {
     STANDARD("Standard Hanabi"), RAINBOW_SIXTH("Rainbow · sixth color"),
-    RAINBOW_MULTI("Rainbow · multicolor"), BLACK_POWDER("Black Powder")
+    RAINBOW_MULTI("Rainbow · multicolor"), BLACK_POWDER("Black Powder"),
+    BLACK_POWDER_RAINBOW_SIXTH("Black Powder + Rainbow · sixth color"),
+    BLACK_POWDER_RAINBOW_MULTI("Black Powder + Rainbow · multicolor")
 }
 
 data class Ruleset(
@@ -18,7 +20,7 @@ data class Ruleset(
     val numbers: Set<Int> = (1..5).toSet(),
     val multicolor: Boolean = false
 ) {
-    val hintableColors: Set<Color> get() = if (multicolor) colors - Color.RAINBOW else colors
+    val hintableColors: Set<Color> get() = colors - Color.BLACK - if (multicolor) setOf(Color.RAINBOW) else emptySet()
 
     fun matchesColor(possible: Color, hint: Color): Boolean =
         if (multicolor && possible == Color.RAINBOW) hint != Color.RAINBOW else possible == hint
@@ -30,6 +32,8 @@ data class Ruleset(
             Preset.RAINBOW_MULTI -> Ruleset(preset, setOf(Color.RED, Color.YELLOW, Color.GREEN, Color.BLUE, Color.WHITE, Color.RAINBOW), multicolor = true)
             // Black Powder's documented base deck uses the standard five suits plus a black suit.
             Preset.BLACK_POWDER -> Ruleset(preset, setOf(Color.RED, Color.YELLOW, Color.GREEN, Color.BLUE, Color.WHITE, Color.BLACK))
+            Preset.BLACK_POWDER_RAINBOW_SIXTH -> Ruleset(preset, setOf(Color.RED, Color.YELLOW, Color.GREEN, Color.BLUE, Color.WHITE, Color.BLACK, Color.RAINBOW))
+            Preset.BLACK_POWDER_RAINBOW_MULTI -> Ruleset(preset, setOf(Color.RED, Color.YELLOW, Color.GREEN, Color.BLUE, Color.WHITE, Color.BLACK, Color.RAINBOW), multicolor = true)
         }
     }
 }
