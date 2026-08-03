@@ -6,7 +6,6 @@ enum class Color(val label: String, val hex: Long) {
     BLACK("Black", 0xFF343A40)
 }
 
-enum class HintKind { COLOR, NUMBER }
 enum class Preset(val title: String) {
     STANDARD("Standard Hanabi"), RAINBOW_SIXTH("Rainbow · sixth color"),
     RAINBOW_MULTI("Rainbow · multicolor"), BLACK_POWDER("Black Powder"),
@@ -42,12 +41,16 @@ data class Ruleset(
             Preset.STANDARD -> Ruleset(preset, setOf(Color.RED, Color.YELLOW, Color.GREEN, Color.BLUE, Color.WHITE))
             Preset.RAINBOW_SIXTH -> Ruleset(preset, setOf(Color.RED, Color.YELLOW, Color.GREEN, Color.BLUE, Color.WHITE, Color.RAINBOW))
             Preset.RAINBOW_MULTI -> Ruleset(preset, setOf(Color.RED, Color.YELLOW, Color.GREEN, Color.BLUE, Color.WHITE, Color.RAINBOW), multicolor = true)
-            // Black Powder's documented base deck uses the standard five suits plus a black suit.
             Preset.BLACK_POWDER -> Ruleset(preset, setOf(Color.RED, Color.YELLOW, Color.GREEN, Color.BLUE, Color.WHITE, Color.BLACK))
             Preset.BLACK_POWDER_RAINBOW_SIXTH -> Ruleset(preset, setOf(Color.RED, Color.YELLOW, Color.GREEN, Color.BLUE, Color.WHITE, Color.BLACK, Color.RAINBOW))
             Preset.BLACK_POWDER_RAINBOW_MULTI -> Ruleset(preset, setOf(Color.RED, Color.YELLOW, Color.GREEN, Color.BLUE, Color.WHITE, Color.BLACK, Color.RAINBOW), multicolor = true)
         }
     }
+}
+
+sealed interface Hint {
+    data class ColorHint(val color: Color) : Hint
+    data class NumberHint(val number: Int) : Hint
 }
 
 data class CardKnowledge(
@@ -62,73 +65,111 @@ data class CardKnowledge(
 }
 
 data class TrackedCard(val id: Long, val knowledge: CardKnowledge)
-data class HintRecord(
-    val id: Long,
-    val kind: HintKind,
-    val value: String,
-    val matchingCardIds: Set<Long>
-)
+data class HintRecord(val hint: Hint, val matchingCardIds: Set<Long>)
 
 data class GameState(
     val ruleset: Ruleset,
     val handSize: Int = 5,
     val cards: List<TrackedCard> = emptyList(),
-    val history: List<HintRecord> = emptyList(),
-    val replacementFromRight: Boolean = true,
-    val darkBackground: Boolean = false
+    val history: List<HintRecord> = emptyList()
 ) {
     companion object {
-        fun new(ruleset: Ruleset, handSize: Int = 5, fromRight: Boolean = true): GameState =
-            GameState(ruleset, handSize, List(handSize) { TrackedCard(it + 1L, CardKnowledge.unknown(ruleset)) }, replacementFromRight = fromRight)
+        fun new(ruleset: Ruleset, handSize: Int = 5): GameState =
+            GameState(ruleset, handSize, List(handSize) { TrackedCard(it + 1L, CardKnowledge.unknown(ruleset)) })
     }
 }
 
+data class AppSettings(
+    val replacementFromRight: Boolean = true,
+    val darkBackground: Boolean = false
+)
+
+data class HanabiAppState(
+    val game: GameState,
+    val settings: AppSettings = AppSettings()
+) {
+    companion object {
+        fun default() = HanabiAppState(GameState.new(Ruleset.forPreset(Preset.STANDARD)))
+    }
+}
+
+sealed interface HintApplicationResult {
+    data class Accepted(val state: GameState) : HintApplicationResult
+    data object Contradiction : HintApplicationResult
+}
+
 object HintEngine {
-    fun applyHint(state: GameState, kind: HintKind, value: String, matches: Set<Long>): GameState {
-        val updated = state.cards.map { card ->
-            val isMatch = card.id in matches
-            val knowledge = when (kind) {
-                HintKind.COLOR -> {
-                    val color = Color.valueOf(value)
-                    val colors = if (isMatch) card.knowledge.possibleColors.filter { state.ruleset.matchesColor(it, color) }.toSet()
-                    else card.knowledge.possibleColors - color - if (state.ruleset.multicolor) setOf(Color.RAINBOW) else emptySet()
-                    card.knowledge.copy(possibleColors = colors, colorHints = if (isMatch) card.knowledge.colorHints + color else card.knowledge.colorHints)
-                }
-                HintKind.NUMBER -> {
-                    val number = value.toInt()
-                    val numbers = if (isMatch) card.knowledge.possibleNumbers intersect setOf(number)
-                    else card.knowledge.possibleNumbers - number
-                    card.knowledge.copy(possibleNumbers = numbers, numberHints = if (isMatch) card.knowledge.numberHints + number else card.knowledge.numberHints)
-                }
-            }
-            card.copy(knowledge = knowledge)
-        }
-        // Never record a hint that leaves a card with no possible identity.
+    fun applyHint(state: GameState, hint: Hint, matches: Set<Long>): HintApplicationResult {
+        val updated = updateCards(state, hint, matches)
         if (updated.any { it.knowledge.possibleColors.isEmpty() || it.knowledge.possibleNumbers.isEmpty() }) {
-            return state
+            return HintApplicationResult.Contradiction
         }
-        return state.copy(cards = updated, history = state.history + HintRecord(System.nanoTime(), kind, value, matches))
+        return HintApplicationResult.Accepted(
+            state.copy(cards = updated, history = state.history + HintRecord(hint, matches))
+        )
     }
 
     fun undo(state: GameState): GameState {
-        val last = state.history.lastOrNull() ?: return state
-        val base = GameState.new(state.ruleset, state.handSize, state.replacementFromRight).copy(
-            cards = state.cards.map { it.copy(knowledge = CardKnowledge.unknown(state.ruleset)) },
-            darkBackground = state.darkBackground
-        )
-        return state.history.dropLast(1).fold(base) { current, hint -> applyHintWithoutHistory(current, hint) }.copy(history = state.history.dropLast(1))
+        if (state.history.isEmpty()) return state
+        val remainingHistory = state.history.dropLast(1)
+        val unknownCards = state.cards.map { it.copy(knowledge = CardKnowledge.unknown(state.ruleset)) }
+        return remainingHistory.fold(state.copy(cards = unknownCards, history = emptyList())) { current, record ->
+            when (val result = applyHint(current, record.hint, record.matchingCardIds)) {
+                is HintApplicationResult.Accepted -> result.state
+                HintApplicationResult.Contradiction -> current
+            }
+        }
     }
 
-    private fun applyHintWithoutHistory(state: GameState, hint: HintRecord): GameState =
-        applyHint(state, hint.kind, hint.value, hint.matchingCardIds).copy(history = state.history)
-
-    fun play(state: GameState, cardId: Long): GameState {
+    fun play(state: GameState, cardId: Long, replacementFromRight: Boolean): GameState {
         val index = state.cards.indexOfFirst { it.id == cardId }
         if (index < 0) return state
         val nextId = (state.cards.maxOfOrNull { it.id } ?: 0L) + 1
         val fresh = TrackedCard(nextId, CardKnowledge.unknown(state.ruleset))
         val remaining = state.cards.toMutableList().apply { removeAt(index) }
-        val replacement = if (state.replacementFromRight) remaining + fresh else listOf(fresh) + remaining
+        val replacement = if (replacementFromRight) remaining + fresh else listOf(fresh) + remaining
         return state.copy(cards = replacement)
     }
+
+    fun reorder(state: GameState, cardId: Long, targetIndex: Int): GameState {
+        val sourceIndex = state.cards.indexOfFirst { it.id == cardId }
+        if (sourceIndex < 0 || state.cards.isEmpty()) return state
+        val destination = targetIndex.coerceIn(state.cards.indices)
+        if (sourceIndex == destination) return state
+        return state.copy(cards = state.cards.toMutableList().apply {
+            add(destination, removeAt(sourceIndex))
+        })
+    }
+
+    private fun updateCards(state: GameState, hint: Hint, matches: Set<Long>): List<TrackedCard> =
+        state.cards.map { card ->
+            val isMatch = card.id in matches
+            val knowledge = when (hint) {
+                is Hint.ColorHint -> {
+                    val colors = if (isMatch) {
+                        card.knowledge.possibleColors.filter { state.ruleset.matchesColor(it, hint.color) }.toSet()
+                    } else {
+                        card.knowledge.possibleColors - hint.color -
+                            if (state.ruleset.multicolor) setOf(Color.RAINBOW) else emptySet()
+                    }
+                    card.knowledge.copy(
+                        possibleColors = colors,
+                        colorHints = if (isMatch) card.knowledge.colorHints + hint.color else card.knowledge.colorHints
+                    )
+                }
+
+                is Hint.NumberHint -> {
+                    val numbers = if (isMatch) {
+                        card.knowledge.possibleNumbers intersect setOf(hint.number)
+                    } else {
+                        card.knowledge.possibleNumbers - hint.number
+                    }
+                    card.knowledge.copy(
+                        possibleNumbers = numbers,
+                        numberHints = if (isMatch) card.knowledge.numberHints + hint.number else card.knowledge.numberHints
+                    )
+                }
+            }
+            card.copy(knowledge = knowledge)
+        }
 }
