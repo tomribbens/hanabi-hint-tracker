@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
@@ -49,7 +50,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun HanabiApp(vm: GameViewModel = viewModel()) {
     val state by vm.state.collectAsState()
-    var hintDialog by remember { mutableStateOf(false) }
+    var givingHint by remember { mutableStateOf(false) }
+    var selectedHint by remember { mutableStateOf<Pair<HintKind, String>?>(null) }
+    var hintMatches by remember { mutableStateOf(emptySet<Long>()) }
+    var hintError by remember { mutableStateOf<String?>(null) }
     var settingsDialog by remember { mutableStateOf(false) }
     var selectedCard by remember { mutableStateOf<Long?>(null) }
     var displayOrder by remember { mutableStateOf<List<TrackedCard>>(emptyList()) }
@@ -59,13 +63,17 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
     var dragStartIndex by remember { mutableIntStateOf(-1) }
     var dragCurrentIndex by remember { mutableIntStateOf(-1) }
     var cardWidthPx by remember { mutableIntStateOf(0) }
+    var handWidthPx by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(state.cards) {
         if (draggingId == null) displayOrder = state.cards
     }
     val cardsToShow = if (displayOrder.isEmpty()) state.cards else displayOrder
     val density = LocalDensity.current
-    val reorderStepPx = cardWidthPx + with(density) { 8.dp.toPx() }
+    val spacingPx = with(density) { 8.dp.toPx() }
+    val reorderStepPx = if (cardsToShow.isNotEmpty() && handWidthPx > 0) {
+        (handWidthPx - spacingPx * (cardsToShow.size - 1)) / cardsToShow.size + spacingPx
+    } else cardWidthPx + spacingPx
 
     fun beginCardDrag(card: TrackedCard) {
         draggingId = card.id
@@ -112,8 +120,54 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = vm::undo, enabled = state.history.isNotEmpty()) { Icon(Icons.AutoMirrored.Filled.Undo, "Undo") }
                     IconButton(onClick = { settingsDialog = true }) { Icon(Icons.Default.Settings, "Settings") }
-                    Spacer(Modifier.weight(1f))
-                    AssistChip(onClick = { hintDialog = true }, label = { Text("Give hint") }, leadingIcon = { Icon(Icons.Default.Add, null) })
+                    if (!givingHint) {
+                        Spacer(Modifier.weight(1f))
+                        AssistChip(onClick = {
+                            givingHint = true
+                            selectedHint = null
+                            hintMatches = emptySet()
+                            hintError = null
+                        }, label = { Text("Give hint") }, leadingIcon = { Icon(Icons.Default.Add, null) })
+                    } else {
+                        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                            state.ruleset.hintableColors.forEach { color ->
+                                SelectableColorSquare(color, selectedHint == (HintKind.COLOR to color.name), 28.dp) {
+                                    selectedHint = HintKind.COLOR to color.name
+                                    hintError = null
+                                }
+                                Spacer(Modifier.width(3.dp))
+                            }
+                            state.ruleset.numbers.sorted().forEach { number ->
+                                SelectableNumberSquare(number, selectedHint == (HintKind.NUMBER to number.toString()), 28.dp) {
+                                    selectedHint = HintKind.NUMBER to number.toString()
+                                    hintError = null
+                                }
+                                Spacer(Modifier.width(3.dp))
+                            }
+                            IconButton(
+                                onClick = {
+                                    val hint = selectedHint
+                                    if (hint != null && hintMatches.isNotEmpty()) {
+                                        if (vm.applyHint(hint.first, hint.second, hintMatches)) {
+                                            givingHint = false
+                                            selectedHint = null
+                                            hintMatches = emptySet()
+                                            hintError = null
+                                        } else {
+                                            hintError = "That hint contradicts recorded information."
+                                        }
+                                    }
+                                },
+                                enabled = selectedHint != null && hintMatches.isNotEmpty()
+                            ) { Icon(Icons.Default.Check, "Commit hint", tint = UiColor(0xFF2E7D32)) }
+                            IconButton(onClick = {
+                                givingHint = false
+                                selectedHint = null
+                                hintMatches = emptySet()
+                                hintError = null
+                            }) { Icon(Icons.Default.Close, "Cancel hint", tint = UiColor(0xFFC62828)) }
+                        }
+                    }
                 }
                 val draggedCard = draggingId?.let { id -> cardsToShow.firstOrNull { it.id == id } }
                 val visibleCards = if (draggedCard == null) cardsToShow else cardsToShow.filterNot { it.id == draggedCard.id }
@@ -125,7 +179,7 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                     }
                 }
                 Box(
-                    Modifier.fillMaxWidth().height(270.dp)
+                    Modifier.fillMaxWidth().height(270.dp).onSizeChanged { handWidthPx = it.width }
                         .pointerInput(reorderStepPx, cardsToShow) {
                             detectDragGesturesAfterLongPress(
                                 onDragStart = { position ->
@@ -158,9 +212,12 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                                 KnowledgeCard(
                                     card = card,
                                     state = state,
-                                    selected = selectedCard == card.id,
-                                    onSelect = { selectedCard = card.id },
-                                    onPlay = { if (draggingId == null) vm.play(card.id) else endCardDrag(play = true); selectedCard = null },
+                                    selected = if (givingHint) card.id in hintMatches else selectedCard == card.id,
+                                    onSelect = {
+                                        if (givingHint) hintMatches = if (card.id in hintMatches) hintMatches - card.id else hintMatches + card.id
+                                        else selectedCard = card.id
+                                    },
+                                    onPlay = { if (!givingHint) { if (draggingId == null) vm.play(card.id) else endCardDrag(play = true); selectedCard = null } },
                                     dragging = false,
                                     onCardWidthChanged = { cardWidthPx = it }
                                 )
@@ -176,7 +233,7 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                         KnowledgeCard(
                             card = draggedCard,
                             state = state,
-                            selected = selectedCard == draggedCard.id,
+                            selected = if (givingHint) draggedCard.id in hintMatches else selectedCard == draggedCard.id,
                             onSelect = { selectedCard = draggedCard.id },
                             onPlay = { endCardDrag(play = true); selectedCard = null },
                             dragging = true,
@@ -192,24 +249,15 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                         )
                     }
                 }
-                if (selectedCard != null) {
+                if (hintError != null) {
+                    Text(hintError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+                if (selectedCard != null && !givingHint) {
                     Button(onClick = { vm.play(selectedCard!!); selectedCard = null }, modifier = Modifier.fillMaxWidth()) { Text("Play selected card") }
                 }
                 HistoryPanel(state.history, state)
             }
         }
-        if (hintDialog) HintDialog(
-            state,
-            onDismiss = { hintDialog = false },
-            onConfirm = { kind, value, matches ->
-                if (vm.applyHint(kind, value, matches)) {
-                    hintDialog = false
-                    null
-                } else {
-                    "That hint contradicts the information already recorded for one or more cards."
-                }
-            }
-        )
         if (settingsDialog) SettingsDialog(
             state = state,
             onDismiss = { settingsDialog = false },
@@ -235,7 +283,12 @@ private fun KnowledgeCard(
     val knownNumber = card.knowledge.possibleNumbers.singleOrNull()
     Card(
         modifier.fillMaxWidth().height(224.dp).onSizeChanged { onCardWidthChanged(it.width) }
-            .graphicsLayer { translationY = if (dragging) -12.dp.toPx() else 0f }
+            .graphicsLayer {
+                translationY = if (dragging) -18.dp.toPx() else 0f
+                scaleX = if (dragging) 1.08f else 1f
+                scaleY = if (dragging) 1.08f else 1f
+                shadowElevation = if (dragging) 24.dp.toPx() else 0f
+            }
             .zIndex(if (dragging) 1f else 0f),
         colors = CardDefaults.cardColors(containerColor = when {
             selected -> MaterialTheme.colorScheme.primaryContainer
@@ -397,13 +450,13 @@ private fun ToggleSetting(label: String, checked: Boolean, onCheckedChange: (Boo
 }
 
 @Composable
-private fun SelectableColorSquare(color: Color, selected: Boolean, onClick: () -> Unit) {
-    Box(Modifier.size(34.dp).clip(RoundedCornerShape(5.dp)).background(color.brush()).border(if (selected) 3.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, RoundedCornerShape(5.dp)).clickable(onClick = onClick))
+private fun SelectableColorSquare(color: Color, selected: Boolean, size: androidx.compose.ui.unit.Dp = 34.dp, onClick: () -> Unit) {
+    Box(Modifier.size(size).clip(RoundedCornerShape(5.dp)).background(color.brush()).border(if (selected) 3.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, RoundedCornerShape(5.dp)).clickable(onClick = onClick))
 }
 
 @Composable
-private fun SelectableNumberSquare(number: Int, selected: Boolean, onClick: () -> Unit) {
-    Box(Modifier.size(34.dp).clip(RoundedCornerShape(5.dp)).background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant).border(if (selected) 3.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, RoundedCornerShape(5.dp)).clickable(onClick = onClick), contentAlignment = Alignment.Center) { Text(number.toString(), fontWeight = FontWeight.Bold) }
+private fun SelectableNumberSquare(number: Int, selected: Boolean, size: androidx.compose.ui.unit.Dp = 34.dp, onClick: () -> Unit) {
+    Box(Modifier.size(size).clip(RoundedCornerShape(5.dp)).background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant).border(if (selected) 3.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, RoundedCornerShape(5.dp)).clickable(onClick = onClick), contentAlignment = Alignment.Center) { Text(number.toString(), fontWeight = FontWeight.Bold) }
 }
 
 @Composable
