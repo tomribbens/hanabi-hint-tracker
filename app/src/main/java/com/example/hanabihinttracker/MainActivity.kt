@@ -96,7 +96,14 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
         val start = dragStartIndex
         val end = dragCurrentIndex
         val id = draggingId
-        if (play && id != null) vm.play(id) else if (start >= 0 && end >= 0 && start != end) vm.reorder(start, end)
+        if (play && id != null) {
+            vm.play(id)
+        } else if (start in cardsToShow.indices && end in cardsToShow.indices && start != end) {
+            displayOrder = cardsToShow.toMutableList().apply {
+                add(end, removeAt(start))
+            }
+            vm.reorder(start, end)
+        }
         draggingId = null
         dragOffsetX = 0f
         dragOffsetY = 0f
