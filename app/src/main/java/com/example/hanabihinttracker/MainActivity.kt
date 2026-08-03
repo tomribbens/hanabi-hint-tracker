@@ -236,7 +236,7 @@ private fun KnowledgeCard(
     Card(
         modifier.fillMaxWidth().height(224.dp).onSizeChanged { onCardWidthChanged(it.width) }
             .graphicsLayer { translationY = if (dragging) -12.dp.toPx() else 0f }
-            .zIndex(if (dragging) 1f else 0f)
+            .zIndex(if (dragging) 1f else 0f),
         colors = CardDefaults.cardColors(containerColor = when {
             selected -> MaterialTheme.colorScheme.primaryContainer
             knownColor != null -> UiColor.Transparent
