@@ -304,15 +304,16 @@ private fun KnowledgeCard(
                 .padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
-            Spacer(Modifier.height(25.dp))
+            Spacer(Modifier.height(4.dp))
+            if (knownColor == null) {
+                ColorSquares(card.knowledge.possibleColors)
+            }
             if (knownNumber != null) {
                 Box(
                     Modifier.fillMaxWidth().weight(1f),
                     contentAlignment = Alignment.Center
                 ) { Text(knownNumber.toString(), fontSize = 72.sp, fontWeight = FontWeight.Bold, color = knownColor?.textColor() ?: MaterialTheme.colorScheme.onSurface) }
-                if (knownColor == null) ColorSquares(card.knowledge.possibleColors)
             } else {
-                ColorSquares(card.knowledge.possibleColors)
                 NumberSquares(card.knowledge.possibleNumbers)
                 Spacer(Modifier.weight(1f))
             }
