@@ -197,7 +197,7 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
                                             moveDraggedCard(amount.x)
                                         }
                                     }
-                                    if (completed) endCardDrag(play = dragOffsetY < -70f) else cancelCardDrag()
+                                    if (completed) endCardDrag() else cancelCardDrag()
                                 }
                             }
                         }
