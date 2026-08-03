@@ -22,7 +22,8 @@ class GameRepository(private val context: Context) {
     }
 
     private fun encode(state: GameState): String {
-        val root = JSONObject().put("preset", state.ruleset.preset.name).put("handSize", state.handSize).put("fromRight", state.replacementFromRight)
+        val root = JSONObject().put("preset", state.ruleset.preset.name).put("handSize", state.handSize)
+            .put("fromRight", state.replacementFromRight).put("darkBackground", state.darkBackground)
         root.put("cards", JSONArray().apply { state.cards.forEach { card ->
             put(JSONObject().put("id", card.id).put("colors", JSONArray(card.knowledge.possibleColors.map { it.name }))
                 .put("numbers", JSONArray(card.knowledge.possibleNumbers.toList())).put("colorHints", JSONArray(card.knowledge.colorHints.map { it.name }))
@@ -46,7 +47,7 @@ class GameRepository(private val context: Context) {
             val item = array.getJSONObject(i)
             HintRecord(item.getLong("id"), HintKind.valueOf(item.getString("kind")), item.getString("value"), item.getJSONArray("matches").toLongs().toSet())
         } } ?: emptyList()
-        GameState(rules, root.getInt("handSize"), cards, history, root.optBoolean("fromRight", true))
+        GameState(rules, root.getInt("handSize"), cards, history, root.optBoolean("fromRight", true), root.optBoolean("darkBackground", false))
     }.getOrNull()
 }
 

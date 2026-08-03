@@ -58,7 +58,8 @@ data class GameState(
     val handSize: Int = 5,
     val cards: List<TrackedCard> = emptyList(),
     val history: List<HintRecord> = emptyList(),
-    val replacementFromRight: Boolean = true
+    val replacementFromRight: Boolean = true,
+    val darkBackground: Boolean = false
 ) {
     companion object {
         fun new(ruleset: Ruleset, handSize: Int = 5, fromRight: Boolean = true): GameState =

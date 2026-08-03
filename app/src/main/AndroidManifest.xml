@@ -4,7 +4,7 @@
         android:label="Hanabi Hint Tracker"
         android:supportsRtl="true"
         android:theme="@style/Theme.HanabiHintTracker">
-        <activity android:name=".MainActivity" android:exported="true">
+        <activity android:name=".MainActivity" android:screenOrientation="landscape" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
