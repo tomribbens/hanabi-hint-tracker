@@ -26,6 +26,18 @@ data class Ruleset(
         if (multicolor && possible == Color.RAINBOW) hint != Color.RAINBOW else possible == hint
 
     companion object {
+        fun forOptions(sixthColor: Boolean, multiColor: Boolean, blackPowder: Boolean): Ruleset {
+            val preset = when {
+                blackPowder && multiColor -> Preset.BLACK_POWDER_RAINBOW_MULTI
+                blackPowder && sixthColor -> Preset.BLACK_POWDER_RAINBOW_SIXTH
+                blackPowder -> Preset.BLACK_POWDER
+                multiColor -> Preset.RAINBOW_MULTI
+                sixthColor -> Preset.RAINBOW_SIXTH
+                else -> Preset.STANDARD
+            }
+            return forPreset(preset)
+        }
+
         fun forPreset(preset: Preset): Ruleset = when (preset) {
             Preset.STANDARD -> Ruleset(preset, setOf(Color.RED, Color.YELLOW, Color.GREEN, Color.BLUE, Color.WHITE))
             Preset.RAINBOW_SIXTH -> Ruleset(preset, setOf(Color.RED, Color.YELLOW, Color.GREEN, Color.BLUE, Color.WHITE, Color.RAINBOW))
@@ -96,7 +108,10 @@ object HintEngine {
 
     fun undo(state: GameState): GameState {
         val last = state.history.lastOrNull() ?: return state
-        val base = GameState.new(state.ruleset, state.handSize, state.replacementFromRight).copy(cards = state.cards.map { it.copy(knowledge = CardKnowledge.unknown(state.ruleset)) })
+        val base = GameState.new(state.ruleset, state.handSize, state.replacementFromRight).copy(
+            cards = state.cards.map { it.copy(knowledge = CardKnowledge.unknown(state.ruleset)) },
+            darkBackground = state.darkBackground
+        )
         return state.history.dropLast(1).fold(base) { current, hint -> applyHintWithoutHistory(current, hint) }.copy(history = state.history.dropLast(1))
     }
 

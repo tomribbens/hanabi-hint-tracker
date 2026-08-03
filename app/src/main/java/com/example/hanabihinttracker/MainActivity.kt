@@ -152,7 +152,7 @@ private fun HanabiApp(vm: GameViewModel = viewModel()) {
         if (settingsDialog) SettingsDialog(
             state = state,
             onDismiss = { settingsDialog = false },
-            onNewGame = { preset, size -> vm.newGame(preset, size); settingsDialog = false },
+            onNewGame = { sixthColor, multiColor, blackPowder, size -> vm.newGame(sixthColor, multiColor, blackPowder, size); settingsDialog = false },
             onDirection = vm::setDirection,
             onDarkBackground = vm::setDarkBackground
         )
@@ -290,19 +290,36 @@ private fun HistoryPanel(history: List<HintRecord>, state: GameState) {
 }
 
 @Composable
-private fun SettingsDialog(state: GameState, onDismiss: () -> Unit, onNewGame: (Preset, Int) -> Unit, onDirection: (Boolean) -> Unit, onDarkBackground: (Boolean) -> Unit) {
-    var preset by remember { mutableStateOf(state.ruleset.preset) }
+private fun SettingsDialog(state: GameState, onDismiss: () -> Unit, onNewGame: (Boolean, Boolean, Boolean, Int) -> Unit, onDirection: (Boolean) -> Unit, onDarkBackground: (Boolean) -> Unit) {
+    var sixthColor by remember { mutableStateOf(state.ruleset.preset in setOf(Preset.RAINBOW_SIXTH, Preset.BLACK_POWDER_RAINBOW_SIXTH)) }
+    var multiColor by remember { mutableStateOf(state.ruleset.preset in setOf(Preset.RAINBOW_MULTI, Preset.BLACK_POWDER_RAINBOW_MULTI)) }
+    var blackPowder by remember { mutableStateOf(state.ruleset.preset in setOf(Preset.BLACK_POWDER, Preset.BLACK_POWDER_RAINBOW_SIXTH, Preset.BLACK_POWDER_RAINBOW_MULTI)) }
     var size by remember { mutableIntStateOf(state.handSize) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Settings") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Preset", style = MaterialTheme.typography.labelLarge)
-            Preset.entries.forEach { FilterChip(preset == it, { preset = it }, label = { Text(it.title) }) }
+            ToggleSetting("6th color", sixthColor) {
+                sixthColor = it
+                if (it) multiColor = false
+            }
+            ToggleSetting("Multi-color", multiColor) {
+                multiColor = it
+                if (it) sixthColor = false
+            }
+            ToggleSetting("Black Powder", blackPowder) { blackPowder = it }
             Row(verticalAlignment = Alignment.CenterVertically) { Text("Hand size", Modifier.weight(1f)); FilterChip(size == 4, { size = 4 }, label = { Text("4") }); Spacer(Modifier.width(6.dp)); FilterChip(size == 5, { size = 5 }, label = { Text("5") }) }
             Text("Replacement enters from", style = MaterialTheme.typography.labelLarge)
             Row { FilterChip(!state.replacementFromRight, { onDirection(false) }, label = { Text("Left") }); Spacer(Modifier.width(6.dp)); FilterChip(state.replacementFromRight, { onDirection(true) }, label = { Text("Right") }) }
             Row(verticalAlignment = Alignment.CenterVertically) { Text("Black background", Modifier.weight(1f)); Switch(checked = state.darkBackground, onCheckedChange = onDarkBackground) }
         }
-    }, confirmButton = { Button(onClick = { onNewGame(preset, size) }) { Text("New game") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } })
+    }, confirmButton = { Button(onClick = { onNewGame(sixthColor, multiColor, blackPowder, size) }) { Text("New game") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } })
+}
+
+@Composable
+private fun ToggleSetting(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
 }
 
 @Composable
